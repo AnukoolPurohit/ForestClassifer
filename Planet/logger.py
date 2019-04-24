@@ -1,3 +1,8 @@
+"""
+    This file contains Logger Class which provides functionality for storing
+    and ploting metadata (training loss, validation loss, and learning rates)
+    for the training process done in NNTrainer class.
+"""
 import matplotlib.pyplot as plt
 
 
@@ -38,10 +43,10 @@ class Logger():
     def plot_loss(self):
         training_loss = self.data['training-loss']
         validation_loss = self.data['validation-loss']
-        ax1 = plt.subplot(2, 1, 1)
-        ax1.plot(training_loss, 'b', label='Training Loss')
-        ax1.legend(loc='best')
-        ax2 = plt.subplot(2, 1, 2)
-        ax2.plot(validation_loss, 'y', label='Validation Loss')
-        plt.legend(loc='best')
+        fig, ax = plt.subplots(2, 1)
+        ax[0].plot(training_loss, 'b', label='Training Loss')
+        ax[0].legend(loc='best')
+        ax[1].plot(validation_loss, 'y', label='Validation Loss')
+        ax[1].legend(loc='best')
+        fig.suptitle('Training Summary')
         plt.show()

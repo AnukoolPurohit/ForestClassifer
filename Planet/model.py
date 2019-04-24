@@ -1,3 +1,7 @@
+"""
+    This file contains code for creating the Classfier Model. An object of
+    PlanetClassifer Class is the model created from a pretrained Resnet.
+"""
 from torch import nn
 
 

@@ -1,3 +1,8 @@
+"""
+     This file contains NNTrainer class that does the main task of bringing
+     together data from PlanetDataCollection class and classfier from
+     PlanetClassifer class and trains the model.
+"""
 from torch import nn
 from torch import optim
 import os
@@ -142,10 +147,10 @@ class NNTrainer():
             metalist = ["Training Loss", "Validation Loss"]
             row_format = "{:>25}" * (len(metalist) + 1)
             if print_cols is False:
-                print(row_format.format("Epoch", *metalist))
+                bar.write(row_format.format("Epoch", *metalist))
                 print_cols = True
-            print(row_format.format(i+1, "%.6f" % train_error,
-                                    "%.6f" % valid_error))
+            bar.write(row_format.format(i+1, "%.6f" % train_error,
+                                        "%.6f" % valid_error))
         return
 
     def save(self, filename):
@@ -181,6 +186,7 @@ class NNTrainer():
     def predict_batch(self, batch):
         """ Predicting outputs for a single batch. Used for Test set.
         """
+        self.freeze()
         self.model.eval()
         res = self.model(batch)
         return res

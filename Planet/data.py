@@ -1,3 +1,10 @@
+"""
+    This file contains all the data storage and preprocessing related elements
+    for this Classifier. It contains classes which are involved in retiving,
+    preprocessing augmenting, and divding images into diffrent datasets.
+    The Ojects are made such that all images are retrived on the fly rather
+    than storing them in RAM.
+"""
 import torch
 import re
 import os
