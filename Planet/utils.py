@@ -3,6 +3,27 @@
     classifier to work.
 """
 from torchvision import transforms
+import pandas as pd
+
+
+def get_df(preds, data, thresh=0.2):
+    """ Convert model predictions into Pandas Dataframe.
+    Returns
+    -------
+    pandas.dataframe
+         Containing results from model predictions.
+
+    """
+    labeled_preds = [' '.join([data.train_ds.categories[i] for i, p in enumerate(
+        pred) if p > thresh]) for pred in preds]
+    fnames = data.test_ds.x.filenames
+    df = pd.DataFrame({'image_name': fnames, 'tags': labeled_preds}, columns=[
+                      'image_name', 'tags'])
+    df['extra'] = df['image_name'].str.split('_', n=1, expand=True)[1]
+    df['extra'] = df['extra'].astype(float)
+    df.sort_values(by='extra', inplace=True)
+    df.drop(columns='extra', inplace=True)
+    return df
 
 
 def get_transforms():

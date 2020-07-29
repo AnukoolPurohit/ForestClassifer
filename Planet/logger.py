@@ -4,9 +4,9 @@
     for the training process done in NNTrainer class.
 """
 import matplotlib.pyplot as plt
+from Planet.callbacks import Callback
 
-
-class Logger():
+class Logger(Callback):
     """ Logger object logs changes in learning rate, validation_loss, and
         training loss. Which can later be plotted as a graph.
 
@@ -18,35 +18,46 @@ class Logger():
 
     """
 
-    def __init__(self):
-        self.data = {
-            'training-loss': [],
-            'validation-loss': [],
-            'learning-rate': []
-        }
-        return
+    def __init__(self, trainer):
+        self.trainer = trainer
+        
+        self.trainingLoss = []
+        self.validationLoss = []
+        self.learningRates = []
 
-    def log_data(self, data):
-        for key in self.data.keys():
-            self.data[key].extend(data[key])
+        self.epochTrainLoss = []
+        self.epochValidLoss = []
         return
+    
+    def log_lr(self):
+        self.learningRates.append(self.trainer.opt.param_groups[-1]['lr'])
 
-    def los_lists(self, listdata):
-        data = {
-            'training-loss': listdata[0],
-            'validation-loss': listdata[1],
-            'learning-rate': listdata[2]
-        }
-        self.log_data(data)
+    def log_loss(self):
+        if self.trainer.in_train:
+            self.epochTrainLoss.append(self.trainer.loss.detach().item())
+        else:
+            self.epochValidLoss.append(self.trainer.loss.detach().item())
+
+    def epoch_reset(self):
+        train_loss = round(sum(self.epochTrainLoss)/len(self.epochTrainLoss), 6)
+        valid_loss = round(sum(self.epochValidLoss)/len(self.epochValidLoss), 6)
+        self.trainer.innerbar.write_data([train_loss, valid_loss])
+        
+        self.trainingLoss.extend(self.epochTrainLoss)
+        self.validationLoss.extend(self.epochValidLoss)
+
+        self.epochTrainLoss, self.epochValidLoss = [],[]
         return
 
     def plot_loss(self):
-        training_loss = self.data['training-loss']
-        validation_loss = self.data['validation-loss']
-        fig, ax = plt.subplots(2, 1)
-        ax[0].plot(training_loss, 'b', label='Training Loss')
+        fig, ax = plt.subplots(1, 2)
+        ax[0].plot(self.trainingLoss, 'b', label='Training Loss')
         ax[0].legend(loc='best')
-        ax[1].plot(validation_loss, 'y', label='Validation Loss')
+        ax[1].plot(self.validationLoss, 'y', label='Validation Loss')
         ax[1].legend(loc='best')
         fig.suptitle('Training Summary')
+        plt.show()
+    
+    def plot_lr(self):
+        plt.plot(self.learningRates)
         plt.show()
