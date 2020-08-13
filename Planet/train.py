@@ -3,15 +3,22 @@
      together data from PlanetDataCollection class and classfier from
      PlanetClassifer class and trains the model.
 """
-from torch import nn
-from torch import optim
 import os
 import pickle
 import torch
-from Planet.progress import InnerBar, OuterBar
+from Planet.callbacks.progress import InnerBar, OuterBar
+from Planet.callbacks.scheduler import ParamScheduler
+from Planet.callbacks.training import TrainEvalCallback
+
+from Planet.exceptions import CancelBatchException
+from Planet.exceptions import CancelEpochException
+from Planet.exceptions import CancelTrainException
+
+from Planet.utils.basic import listify
 from Planet.model import PlanetClassifer
-from Planet.scheduler import ParamScheduler
-from Planet.logger import Logger
+
+from torch import nn
+from torch import optim
 from torch import tensor
 from tqdm.auto import tqdm
 
@@ -43,108 +50,113 @@ class NNTrainer():
 
     """
 
-    def __init__(self, data, arch, sched_func, optimizer):
-        self.data = data
-        self.model = PlanetClassifer(arch, output_sz=data.c)
-        self.loss_func = nn.BCEWithLogitsLoss()
-        self.log = Logger(self)
+    def __init__(self, data, model, loss_func, opt, lr=1e-2,
+                     cbs=None, cb_funcs=None):
+        self.model, self. data , self.loss_func = model, data, loss_func
+        self.opt, self.lr = opt, lr
+        
+        self.in_train = False
+
         self.innerbar = InnerBar(self, leave=False)
         self.outerbar = OuterBar(self, leave=False)
-        self.sched = ParamScheduler('lr', sched_func, self)
-        self.optimizer = optimizer
+        
+        self.cbs = []
+        self.add_cb(TrainEvalCallback())
+        self.add_cbs(cbs)
+        self.add_cbs(cbf() for cbf in listify(cb_funcs))
         return
-
-    def freeze(self):
-        """ Freezing all layers of the model except the final few fully
-            connected layer.
-        """
-        self.model.freeze()
+    
+    def add_cbs(self, cbs):
+        for cb in listify(cbs):
+            self.add_cb(cb)
         return
-
-    def unfreeze(self):
-        """ Unfreezing all layers of the model.
-        """
-
-        self.model.unfreeze()
+    
+    def add_cb(self, cb):
+        cb.set_trainer(self)
+        setattr(self, cb.name, cb)
+        self.cbs.append(cb)
+        return
+    
+    def remove_cbs(self, cbs):
+        for cb in cbs:
+            self.cbs.remove(cb)
         return
 
     def one_batch(self, xb, yb):
-        self.xb, self.yb = xb, yb
+        try:
+            self.xb, self.yb = xb, yb
+            self('begin_batch')
+            
+            self.pred = self.model(self.xb)
+            self('after_pred')
+            
+            self.loss = self.loss_func(self.pred, self.yb)
+            self('after_loss')
 
-        if self.in_train:
-            self.sched.set_params()
-        
-        self.pred = self.model(self.xb)
-        self.loss = self.loss_func(self.pred, self.yb)
-        self.log.log_loss()
-        if self.in_train:
+            if not self.in_train: return
+            
+            
             self.loss.backward()
+            self('after_backward')
+            
             self.opt.step()
+            self('after_step')
+            
             self.opt.zero_grad()
+
+        except CancelBatchException:
+            self('after_cancel_batch')
+        
+        finally:
+            self('after_batch')
         return
     
     def all_batches(self, dl):
-        self.tl = 0.
         self.iters = len(dl)
-        for xb, yb in self.innerbar(dl):
-            self.one_batch(xb, yb)
-            if self.in_train:
-                self.log.log_lr()
-                self.n_epochs += 1./self.iters
-                self.n_iter += 1
-            self.innerbar.update()
+        try:
+            for xb, yb in self.innerbar(dl):
+                self.one_batch(xb, yb)
+                self.innerbar.update()
+
+        except CancelEpochException:
+            self('after_cancel_epoch')
         return
     
     def fit(self, epochs, lr=1e-3):
-        self.epochs = epochs
-        self.loss = tensor(0.)
-        self.n_epochs = 0.
-        self.n_iter = 0
-        self.opt = self.optimizer(self.model.parameters(), lr)
-        for epoch in self.outerbar(range(epochs)):    
-            self.epoch = epoch
-           
-            self.model.train()
-            self.in_train = True
-            # Training Loop
-            self.all_batches(self.data.train_dl)
-
-            self.model.eval()
-            # Validation Loop
-            self.in_train = False
-            with torch.no_grad():
-                self.all_batches(self.data.valid_dl)
-            self.log.epoch_reset()
+        self.epochs, self.loss = epochs, tensor(0.)
+        
+        try:
+            for cb in self.cbs:
+                cb.set_trainer(self)
+            self('begin_fit')
+            for epoch in self.outerbar(range(epochs)):    
+                self.epoch = epoch
+                
+                # Training Loop
+                if not self('begin_epoch'):
+                    self.all_batches(self.data.train_dl)
+                # Validation Loop
+                with torch.no_grad():
+                    if not self('begin_validate'):
+                        self.all_batches(self.data.valid_dl)
+                self('after_epoch')
+        except CancelTrainException:
+            self('after_cancel_train')
+        finally:
+            self('after_fit')
         return
     
-    def save(self, filename):
-        """ Saving the trained model in Models folder.
-        Parameters
-        ----------
-        filename: str
-            Name of file.
-        """
-        if not os.path.exists('Models'):
-            os.mkdir('Models')
-        torch.save(self.model.state_dict(), 'Models/'+filename)
-        return
-    
-    def load(self, filename):
-        """ Loading a trained model from a file in Models folder
-
-        Parameters
-        ----------
-        filename: str
-            Name of pickle file.
-        """
-
-        self.model.load_state_dict(torch.load('Models/'+filename))
-        return
+    def __call__(self, cb_name):
+        res = True
+        for cb in sorted(self.cbs, key=lambda x: x._order):
+            res = cb(cb_name) and res
+        return res
 
     def predict_batch(self, batch):
         """ Predicting outputs for a single batch. Used for Test set.
         """
-        self.freeze()
+        self.model.cuda()
+        self.model.freeze()
         self.model.eval()
         res = self.model(batch)
         return res
@@ -154,6 +166,7 @@ class NNTrainer():
         """
         res = []
         for x, _ in tqdm(self.data.test_dl):
+            x = x.cuda()
             res.append(self.predict_batch(x))
         res = torch.cat(res)
         return nn.Sigmoid()(res)
