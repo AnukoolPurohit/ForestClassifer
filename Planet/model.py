@@ -2,6 +2,8 @@
     This file contains code for creating the Classfier Model. An object of
     PlanetClassifer Class is the model created from a pretrained Resnet.
 """
+import os
+import torch
 from torch import nn
 
 
@@ -32,7 +34,7 @@ class PlanetClassifer(nn.Module):
                                nn.Dropout(0.2),
                                nn.Linear(256, output_sz))
         model.fc = linear
-        self.model = model.cuda()
+        self.model = model
         self.freeze()
         return
 
@@ -54,4 +56,28 @@ class PlanetClassifer(nn.Module):
         """
         for params in self.model.parameters():
             params.requires_grad = True
+        return
+    
+    def save(self, filename):
+        """ Saving the trained model in Models folder.
+        Parameters
+        ----------
+        filename: str
+            Name of file.
+        """
+        if not os.path.exists('Models'):
+            os.mkdir('Models')
+        torch.save(self.state_dict(), 'Models/'+filename)
+        return
+    
+    def load(self, filename):
+        """ Loading a trained model from a file in Models folder
+
+        Parameters
+        ----------
+        filename: str
+            Name of pickle file.
+        """
+
+        self.load_state_dict(torch.load('Models/'+filename))
         return

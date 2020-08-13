@@ -8,6 +8,7 @@
 import torch
 import re
 import os
+import random
 import pandas as pd
 import matplotlib.pyplot as plt
 
@@ -107,9 +108,9 @@ class PlanetDataset(Dataset):
         """
         x = self.tfms(self.x[idx])
         y = self.y[idx]
-        x = x.cuda()
+        x = x
         y = torch.FloatTensor(y)
-        y = y.cuda()
+        y = y
         return (x, y)
 
     def __str__(self):
@@ -298,6 +299,19 @@ class PlanetDataCollection():
                 col.axis('off')
                 col.set_title(title)
                 i += 1
+        return
+    
+    def show_tfms(self, nrows=3, figsize=(15, 15)):
+        """ Displays a sample to explain the transforms on the training set.
+        """
+
+        fig, ax = plt.subplots(nrows=nrows, ncols=nrows, figsize=figsize)
+        i = random.randint(0,len(self.train_ds))
+        for row in ax:
+            for col in row:
+                image = self.tfms['train_display'](self.train_ds.x[i])
+                col.imshow(image)
+                col.axis('off')
         return
 
     @classmethod
